@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "826129321254",
+    "project_id": "profolio-84a3f",
+    "storage_bucket": "profolio-84a3f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:826129321254:android:06231799c6a27709c785e7",
+        "android_client_info": {
+          "package_name": "com.example.profolio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2uOIfCdCS0r8e-2r8_2adnKx_HYLYJKA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:826129321254:android:91aa448a781951cec785e7",
+        "android_client_info": {
+          "package_name": "com.useit.rental"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2uOIfCdCS0r8e-2r8_2adnKx_HYLYJKA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

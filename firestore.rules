@@ -1,0 +1,234 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerUid;
+    }
+
+    function ownerUidNotModified() {
+      return request.resource.data.ownerUid == resource.data.ownerUid;
+    }
+
+    function createdAtNotModified() {
+      return request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function hasExactFields(data, required, allowed) {
+      return data.keys().hasAll(required) && data.keys().hasOnly(allowed);
+    }
+
+    function isValidUser(data) {
+      return hasExactFields(
+          data,
+          ['displayName', 'createdAt', 'updatedAt'],
+          ['displayName', 'email', 'phoneNumber', 'createdAt', 'updatedAt']
+        ) &&
+        data.displayName is string &&
+        data.displayName.size() >= 1 &&
+        data.displayName.size() <= 80 &&
+        (!('email' in data) ||
+          (data.email is string && data.email.size() >= 3 &&
+           data.email.size() <= 254 &&
+           'email' in request.auth.token &&
+           data.email == request.auth.token.email)) &&
+        (!('phoneNumber' in data) ||
+          (data.phoneNumber is string && data.phoneNumber.size() >= 8 &&
+           data.phoneNumber.size() <= 20 &&
+           'phone_number' in request.auth.token &&
+           data.phoneNumber == request.auth.token.phone_number)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidListing(data) {
+      return hasExactFields(data, [
+          'ownerUid', 'ownerName', 'title', 'category', 'emoji',
+          'dailyPrice', 'area', 'description', 'status', 'createdAt', 'updatedAt'
+        ], [
+          'ownerUid', 'ownerName', 'title', 'category', 'emoji',
+          'dailyPrice', 'area', 'description', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.ownerUid is string &&
+        data.ownerUid.size() >= 1 &&
+        data.ownerUid.size() <= 128 &&
+        data.ownerName is string &&
+        data.ownerName.size() >= 1 &&
+        data.ownerName.size() <= 80 &&
+        data.title is string &&
+        data.title.size() >= 1 &&
+        data.title.size() <= 80 &&
+        data.category is string &&
+        data.category.size() >= 1 &&
+        data.category.size() <= 32 &&
+        data.emoji is string &&
+        data.emoji.size() >= 1 &&
+        data.emoji.size() <= 8 &&
+        data.dailyPrice is int &&
+        data.dailyPrice >= 1 &&
+        data.dailyPrice <= 200000 &&
+        data.area is string &&
+        data.area.size() >= 1 &&
+        data.area.size() <= 80 &&
+        data.description is string &&
+        data.description.size() >= 1 &&
+        data.description.size() <= 1200 &&
+        data.status in ['active', 'paused'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBooking(data) {
+      return hasExactFields(data, [
+          'listingId', 'renterUid', 'ownerUid', 'itemTitle',
+          'dailyPrice', 'status', 'createdAt', 'updatedAt'
+        ], [
+          'listingId', 'renterUid', 'ownerUid', 'itemTitle',
+          'dailyPrice', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.listingId is string &&
+        data.listingId.size() >= 1 &&
+        data.listingId.size() <= 128 &&
+        data.renterUid is string &&
+        data.renterUid.size() >= 1 &&
+        data.renterUid.size() <= 128 &&
+        data.ownerUid is string &&
+        data.ownerUid.size() >= 1 &&
+        data.ownerUid.size() <= 128 &&
+        data.itemTitle is string &&
+        data.itemTitle.size() >= 1 &&
+        data.itemTitle.size() <= 80 &&
+        data.dailyPrice is int &&
+        data.dailyPrice >= 1 &&
+        data.dailyPrice <= 200000 &&
+        data.status in ['requested', 'accepted', 'declined', 'cancelled', 'completed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSavedItem(data, listingId) {
+      return hasExactFields(data, ['listingId', 'createdAt'], ['listingId', 'createdAt']) &&
+        data.listingId is string &&
+        data.listingId == listingId &&
+        data.createdAt is timestamp;
+    }
+
+    function validBookingTransition() {
+      let newStatus = request.resource.data.status;
+      return (
+          request.auth.uid == resource.data.ownerUid &&
+          resource.data.status == 'requested' &&
+          newStatus in ['accepted', 'declined']
+        ) || (
+          request.auth.uid == resource.data.ownerUid &&
+          resource.data.status == 'accepted' &&
+          newStatus == 'completed'
+        ) || (
+          request.auth.uid == resource.data.renterUid &&
+          resource.data.status in ['requested', 'accepted'] &&
+          newStatus == 'cancelled'
+        );
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow update: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'updatedAt']);
+
+      allow delete: if false;
+
+      match /saved/{listingId} {
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidSavedItem(request.resource.data, listingId) &&
+          request.resource.data.createdAt == request.time &&
+          exists(/databases/$(database)/documents/listings/$(listingId)) &&
+          get(/databases/$(database)/documents/listings/$(listingId)).data.status == 'active';
+
+        allow update: if false;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /listings/{listingId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.status == 'active' || isDocOwner());
+
+      allow create: if isAuthenticated() &&
+        isValidListing(request.resource.data) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.status == 'active' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow update: if isAuthenticated() &&
+        isDocOwner() &&
+        isValidListing(request.resource.data) &&
+        ownerUidNotModified() &&
+        createdAtNotModified() &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'ownerName', 'title', 'category', 'emoji', 'dailyPrice',
+            'area', 'description', 'status', 'updatedAt'
+          ]);
+
+      allow delete: if isAuthenticated() && isDocOwner();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() &&
+        (request.auth.uid == resource.data.renterUid ||
+         request.auth.uid == resource.data.ownerUid);
+
+      allow create: if isAuthenticated() &&
+        isValidBooking(request.resource.data) &&
+        request.resource.data.renterUid == request.auth.uid &&
+        request.resource.data.renterUid != request.resource.data.ownerUid &&
+        request.resource.data.status == 'requested' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId)) &&
+        get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status == 'active' &&
+        get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.ownerUid ==
+          request.resource.data.ownerUid &&
+        get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.title ==
+          request.resource.data.itemTitle &&
+        get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.dailyPrice ==
+          request.resource.data.dailyPrice;
+
+      allow update: if isAuthenticated() &&
+        isValidBooking(request.resource.data) &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt']) &&
+        validBookingTransition();
+
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
